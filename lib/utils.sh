@@ -4,7 +4,7 @@
 # See the LICENSE file in the project root for full license text.
 # TODO finish LICENSE
 
-# TODO specify default $LOGFILE within log_init - pass timestamp as an arg etc
+# TODO specify default $LOGFILE within log_init - allows to pass timestamp as an arg etc
 # TODO logfile is wrtten only on exit, explore stdbuf to enable e.g. `tail -f log`
 # TODO if_pipe - check fd1 too?
 
@@ -104,7 +104,6 @@ function get_term_height() {
     else
         echo 24
     fi
-    # [[ $? == 0 ]] && echo "$term_height" || echo 80
 }
 
 function get_term_width() {
@@ -115,7 +114,6 @@ function get_term_width() {
     else
         echo 80
     fi
-    # [[ $? == 0 ]] && echo "$term_width" || echo 80
 }
 
 function center_text() {
