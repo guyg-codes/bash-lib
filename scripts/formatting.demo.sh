@@ -92,20 +92,17 @@ function loop_demos() {
     }
 
     function _run_demo() {
-        local fn="${fn_list[$fn_num]}"
+        # BUG calling demo second time breaks as ANSI codes are embedded in fn name
+        local fn="$(echo "${fn_list[$fn_num]}" | strip_ansi)"
         echo
         echo "Now running: $response - ${fn}()"
         echo "=================================================="
         echo
-        # re-enable cache before demo
-        MSG_EN_CACHE=$TRUE
         # run demo in sub-shell to preserve clean shell
         (
             source "${BASH_LIB}/lib/utils.sh"
             "demo_$fn"
         )
-        # re-enable cache before demo
-        MSG_EN_CACHE=$FALSE
         MSG_BANNER="${BG_RED}" msg_banner "end of: $fn"
 
         echo
