@@ -5,6 +5,11 @@
 
 # formatted messagining library
 
+# TODO check utils.sh has beeen sourced already
+# if ! $( declare -F | grep -q 'declare -f strip_ansi' 2>/dev/null );
+#      echo -e "ERROR: formatting.sh: must first source ${BASH_LIB}/lib/utils.sh"
+#      exit 1
+# fi
 # TODO promote MSG_EN_XTRACE/VERBOSE to utils.sh?
 # TODO msg_debug_vars <function> ??
 # TODO msg_divider_text??: ---- your text here ----
