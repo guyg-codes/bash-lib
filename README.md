@@ -28,6 +28,8 @@ $ msg_info "my message here"
 INFO     : my message here
 ```
 
+![demo of msg_*() functions](./media/demo_basics_all.png)
+
 ## Usage
 
 1. grab project files
