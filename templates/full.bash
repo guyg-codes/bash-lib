@@ -4,7 +4,7 @@
 # ==================================================
 # grab common utilities & formatting functions
 # globals: TRUE, FALSE, COLOR, VERBOSE, DEBUG, TRACE, DRYRUN, LOGGING
-[[ ! -v BASH_LIB ]] && BASH_LIB="/projects/bash-lib/"
+[[ ! -v BASH_LIB ]] && BASH_LIB="$(dirname "$0")/.."
 source "${BASH_LIB}/lib/utils.sh"
 
 # SCRIPT GLOBALS
@@ -32,13 +32,9 @@ function usage_text() {
     # specify script usage for end-users
     # REQUIRED [OPTIONAL]
     local usage_text="
-    POS --foo FOO [-b|--baz BAZ] [-v|--version]
-    ${common_usage_text}
+    POS --foo FOO [-b|--baz BAZ] [-v|--version] ${COMMON_USAGE_TEXT}
     "
-    # strip indentation, assuming 4 leading spaces
-    # indented bash heredocs are a bad fit as they require leading tabs, not spaces
-    #   cat <<- EOF...EOF heredoc
-    echo -e "${usage_text}" | sed '/^$/d;s/^    //'
+    echo -e "${usage_text}"
 }
 
 function help_text() {
@@ -48,7 +44,7 @@ function help_text() {
     ${FMT_BOLD}${FG_CYAN}${script_name}: ${script_desc}${FMT_CLR}
 
     ${FMT_H1}USAGE${FMT_CLR}
-    $(usage_text)
+        $(usage_text | sed 's/^/    /')
     
     ${FMT_H1}REQUIRED ARGUMENTS${FMT_CLR}
 
@@ -64,16 +60,7 @@ function help_text() {
         ${FMT_ARG}   --usage${FMT_CLR}    print script usage & exit [$FALSE]
         ${FMT_ARG}-v|--version${FMT_CLR}  print script version ($VERSION) & exit [$FALSE]
 
-        ${FMT_H2}DEFAULT ARGUMENTS${FMT_CLR}
-        ${FMT_ARG}   --color auto|always|never${FMT_CLR}    set color & formatting behaviour [auto]
-                ${FMT_DIM}- auto: show if printing to terminal (i.e. not redirected to pipe or file)${FMT_CLR}
-                ${FMT_DIM}- always: always enable color & formatting${FMT_CLR}
-                ${FMT_DIM}- always: always disable color & formatting${FMT_CLR}
-        ${FMT_ARG}   --debug${FMT_CLR}    enable debugging output: \"${MSG_DEBUG}\"
-        ${FMT_ARG}-h|--help${FMT_CLR}     print help-text and exit
-        ${FMT_ARG}   --logfile LOGFILE${FMT_CLR} specify logfile path [${LOGFILE}]
-        ${FMT_ARG}   --trace${FMT_CLR}    enable extra debugging output: \"${MSG_TRACE}\"
-        ${FMT_ARG}   --verbose${FMT_CLR}  enable output verbose mode
+        ${COMMON_HELP_TEXT}
     "
 
     # strip indentation, assuming 4 leading spaces
@@ -85,17 +72,20 @@ function help_text() {
 function examples_text() {
     # provide end-user with direction
     # NB wrap in a function to delay definition to *aftter* parsing potential --color=always
-    local help_text="
+    local examples_text="
     ${FMT_BOLD}${FG_CYAN}${script_name}: ${script_desc}${FMT_CLR}
 
-    ${FMT_EXAMPLE}1. apply FOO to POS${FMT_CLR}
-        $ ${script_name} /some/path --foo \"wc -l\"
+    ${FMT_EXAMPLE}1. apply command FOO to path POS${FMT_CLR}
+        $ ${script_name} /some/path --foo \"ls -l | grep \${USER}\"
 
     ${FMT_EXAMPLE}2. report script version${FMT_CLR}
         $ ${script_name} --version
         ${VERSION}
     "
-    echo -e "${help_text}" | sed "s/^    //"
+    # strip indentation, assuming 4 leading spaces
+    # indented bash heredocs are a bad fit as they require leading tabs, not spaces
+    #   cat <<- EOF...EOF heredoc
+    echo -e "${examples_text}" | sed "s/^    //"
 }
 
 # ARGUMENT PARSING
@@ -107,21 +97,29 @@ function parse_args() {
 
     # handle common argument parsing for all scripts:
     #   split args -ab -> -a -ab, --color=never -> --color never
-    #   default args: --color/debug/help/logfile/trace/verbose
+    #   default args: --color/debug/dryrun/help/logfile/msg-level/trace/verbose
     pre_parse_args "$@"
     # NB below *MUST* be retained to pick-up modified args from pre_parse_args
     set -- "${_pre_args[@]}"
 
     # iterate through input argumets
     while [[ $# -gt 0 ]]; do
-        # echo "1c: $1"
         case "$1" in
-        --no-log)
-            LOGGING="$FALSE"
-            shift
-            ;;
         --ex*) # --examples
             EXAMPLES="$TRUE"
+            shift
+            ;;
+        --f*) # --foo FOO
+            if [[ $# -gt 1 && ! $2 =~ ^- ]]; then
+                FOO="$2"
+                shift 2
+            else
+                msg_error "missing argument to --foo"
+                shift
+            fi
+            ;;
+        --no-log)
+            LOGGING="$FALSE"
             shift
             ;;
         --u*) # --usage
@@ -154,10 +152,13 @@ function parse_args() {
     # VALIDATE ARGS
     # -------------------------------------
 
-    [[ ${#POSITIONALS} -gt 0 ]] && msg_error "no postional arguments expected, got: ${POSITIONALS[*]}"
+    [[ ! ${#POSITIONALS[@]} -eq 1 ]] && msg_error "require 1 postional argument, got (${#POSITIONALS[@]}): ${POSITIONALS[*]}"
+    # extract singular expected positional
+    POS="${POSITIONALS[0]}"
 
-    msg_trace "parse_args(): post-validation"
-    msg_trace_vars ALL_ARGS POSITIONALS LOGGING LOGFILE COLOR DEBUG TRACE VERBOSE
+    msg_debug "parse_args(): post-validation"
+    msg_debug_vars POSITIONALS LOGGING LOGFILE COLOR DRYRUN DEBUG TRACE VERBOSE
+    msg_trace_vars ALL_ARGS
 
     # exit on failed validation
     if msg_cache_check error; then
@@ -173,24 +174,27 @@ function parse_args() {
 # ==================================================
 
 function foo() {
-    # docstring here
-    # $1 - path
+    # <your docstring here>
+    # apply function to path
+    # $1 - target path
     # $2 - function to run on path
     local target_path="$1"
     local function="$2"
-    local fn_out=""
 
+    # basic validation
     if [[ $# -eq 0 || $# -gt 2 ]]; then
         msg_error "expected 2 arguments, got $#: $*"
         return 1
     fi
 
-    # run command
+    # run command - for --debug, --dryrun support
     cmd="${function} ${target_path}"
     runcmd "$cmd"
-    fn_out="$runcmd_output"
 
-    # remember to return
+    # display to end-user
+    echo "$runcmd_output"
+
+    # remember to set a return value 0 = success, >=1 error
     return "$runcmd_status"
 }
 
@@ -207,4 +211,4 @@ log_init
 # MAIN
 # ==================================================
 
-bar "$POS" "$FOO"
+foo "$POS" "$FOO"
