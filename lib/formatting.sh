@@ -10,6 +10,7 @@
 #      echo -e "ERROR: formatting.sh: must first source ${BASH_LIB}/lib/utils.sh"
 #      exit 1
 # fi
+# TODO theme support via nord.env etc
 # TODO promote MSG_EN_XTRACE/VERBOSE to utils.sh?
 # TODO msg_debug_vars <function> ??
 # TODO msg_divider_text??: ---- your text here ----
@@ -32,6 +33,8 @@
 [[ ! -v MSG_EN_XTRACE ]] && export MSG_EN_XTRACE=$FALSE
 # enable set -o verbose/set -v into msg_*() functions
 [[ ! -v MSG_EN_VERBOSE ]] && export MSG_EN_VERBOSE=$FALSE
+# skip STDOUT/ERR and redirect to $LOGFILE
+[[ ! -v MSG_LOG_ONLY ]] && export MSG_LOG_ONLY=$FALSE
 # print messages of level <= $MSG_LEVEL
 [[ ! -v MSG_LEVEL ]] && export MSG_LEVEL=6
 # --color=auto/always/never
@@ -266,14 +269,12 @@ export _MSG_LEN="$(_msg_len)"
 # plus $_MSG_CACHE_GLOBAL[@] for all messages
 if [[ ! -v _MSG_CACHE_GLOBAL ]]; then
     for i in "${MSG_FORMATS[@]}" GLOBAL; do
-        # TODO x -> g
         declare -a "_MSG_CACHE_${i}"
     done
 fi
 
 function msg_cache_reset() {
     # for each of $_MSG_CACHE_*[@] arrays, empty them
-    # TODO allow to empty specific cache(s)?
 
     # keep msg_* internals out of xtrace/verbose logs, unless enabled
     [[ -o xtrace && $MSG_EN_XTRACE == "$FALSE" ]] && set +x && trap 'set -x' RETURN

@@ -2,7 +2,6 @@
 # Copyright (c) 2026 Guy Gibson
 # This file is part of bash-utils, licensed under the MIT License.
 # See the LICENSE file in the project root for full license text.
-# TODO finish LICENSE
 
 # TODO specify default $LOGFILE within log_init - allows to pass timestamp as an arg etc
 # TODO logfile is wrtten only on exit, explore stdbuf to enable e.g. `tail -f log`
@@ -170,11 +169,27 @@ function center_text() {
     done
 }
 
+function timestamp() {
+    # naive timestamp using local TZ, seconds
+    # YYYYmmdd-HHMMSS - e.g. 20260922-182318
+    date '+%Y%m%d-%H%M%S'
+}
+
+function timestamp_iso() {
+    # ISO-formatted time, specifying TZ, defaults to nanoseconds
+    local fmt="ns"
+    [[ $# -gt 0 ]] && fmt="$1"
+    date --iso="${fmt}"
+}
+
+# ARGUMENT PARSING
+# =============================================================================
+
 function pre_parse_args() {
     # handle common argument parsing functions
     #   -ab -> -a -a
     #   --color=never -> --color never
-    #   --color/debug/trace/verbose/logfile
+    #   --color/debug/dryrun/help/trace/verbose/logfile/msg-level
     #   -- * - stop processing arguments
     #   pre-process to support e.g. --color=never format
     #
@@ -183,6 +198,9 @@ function pre_parse_args() {
     # _pre_args - arguments after handling common --debug etc
     # common_usage -
     #
+    # NB --dryrun is handled but not included in common help-text
+    #   i.e. it would imply script fully supports --dryrun
+    #
     # NB *MUST* remember to run the following below pre_parse_args:
     # set -- "${_pre_args[@]}"
 
@@ -190,7 +208,23 @@ function pre_parse_args() {
     # 'output' via fixed arrays
     declare -ga ALL_ARGS=()
     declare -ga _pre_args=()
-    declare -g common_usage_text="[--color auto|always|never] [--debug] [--help] [--logfile LOGFILE] [--trace] [--verbose]"
+    # --usage for below args
+    declare -g COMMON_USAGE_TEXT="[--color auto|always|never] [--debug] [--help] [--logfile LOGFILE] [--msg-level MSG_LEVEL] [--trace] [--verbose]"
+    # --help for below args
+    declare -g COMMON_HELP_TEXT="
+        ${FMT_H2}DEFAULT ARGUMENTS${FMT_CLR}
+        ${FMT_ARG}   --color auto|always|never${FMT_CLR}    set color & formatting behaviour [auto]
+             ${FMT_DIM}- auto: show if printing to terminal (i.e. not redirected to pipe or file)${FMT_CLR}
+             ${FMT_DIM}- always: always enable color & formatting${FMT_CLR}
+             ${FMT_DIM}- always: always disable color & formatting${FMT_CLR}
+        ${FMT_ARG}   --debug${FMT_CLR}    enable debugging output: \"${MSG_DEBUG}\"
+        ${FMT_ARG}-h|--help${FMT_CLR}     print help-text and exit
+        ${FMT_ARG}   --logfile LOGFILE${FMT_CLR}     specify logfile path [${LOGFILE}]
+        ${FMT_ARG}   --msg-level MSG_LEVEL${FMT_CLR} print only messages of level <= MSG_LEVEL [${MSG_LEVEL}]
+             ${FMT_DIM}- emergency=0... info=6, debug=7, trace=8${FMT_CLR}
+        ${FMT_ARG}   --trace${FMT_CLR}    enable extra debugging output: \"${MSG_TRACE}\"
+        ${FMT_ARG}   --verbose${FMT_CLR}  enable output verbose mode
+    "
 
     # handle splitting of input arguments, defer default args for later
     while [[ $# -gt 0 ]]; do
@@ -239,15 +273,6 @@ function pre_parse_args() {
         # DEBUG
         # echo "1b: $1"
         case "$1" in
-        --logfile)
-            if [[ $# -gt 1 && ! $2 =~ ^- ]]; then
-                LOGFILE="$2"
-                shift 2
-            else
-                msg_error "missing argument to --logfile"
-                shift
-            fi
-            ;;
         --color) # auto/always/never, validated in formatting.sh
             if [[ $# -gt 1 && ! $2 =~ ^- ]]; then
                 # set COLOR & source lib again for refreshed $FMT_* etc
@@ -262,9 +287,31 @@ function pre_parse_args() {
             DEBUG="$TRUE"
             shift
             ;;
+        --dryrun)
+            DRYRUN="$TRUE"
+            shift
+            ;;
         -h | --help)
             HELP="$TRUE"
             shift
+            ;;
+        --logfile)
+            if [[ $# -gt 1 && ! $2 =~ ^- ]]; then
+                LOGFILE="$2"
+                shift 2
+            else
+                msg_error "missing argument to --logfile"
+                shift
+            fi
+            ;;
+        --msg-level)
+            if [[ $# -gt 1 && ! $2 =~ ^- ]]; then
+                MSG_LEVEL="$2"
+                shift 2
+            else
+                msg_error "missing argument to --msg-level"
+                shift
+            fi
             ;;
         --trace)
             TRACE="$TRUE"
@@ -287,19 +334,6 @@ function pre_parse_args() {
 
     # NB *MUST* remember to run the following below pre_parse_args:
     # set -- "${_pre_args[@]}"
-}
-
-function timestamp() {
-    # naive timestamp using local TZ, seconds
-    # YYYYmmdd-HHMMSS - e.g. 20260922-182318
-    date '+%Y%m%d-%H%M%S'
-}
-
-function timestamp_iso() {
-    # ISO-formatted time, specifying TZ, defaults to nanoseconds
-    local fmt="ns"
-    [[ $# -gt 0 ]] && fmt="$1"
-    date --iso="${fmt}"
 }
 
 # LIBRARIES - lib contents may be used in below code
@@ -325,12 +359,12 @@ function _runcmd() {
     local cmd_quoted="${cmd:q}"
 
     if [[ $DRYRUN == "$TRUE" ]]; then
-        msg_dryrun "runcmd - cmd: ${cmd_quoted}"
+        msg_dryrun "${FMT_ITALIC}runcmd${FMT_CLR}: ${cmd_quoted}"
         runcmd_out=""
         runcmd_status=0
         return 0
     else
-        msg_debug "${FMT_DRYRUN}DRYRUN${FMT_CLR}: runcmd: $cmd_quoted}"
+        msg_debug "${FMT_ITALIC}runcmd${FMT_CLR}: ${cmd_quoted}"
     fi
 
     # we can't run eval in a sub-shell or we lose $?/PIPESTATUS
