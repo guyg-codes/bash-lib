@@ -3,13 +3,31 @@
 # This file is part of bash-utils, licensed under the MIT License.
 # See the LICENSE file in the project root for full license text.
 
-# TODO explain xtrace trap
-# TODO advice on formatting for accessibility
+# TODO demo: explain xtrace trap
+# TODO demo: advice on formatting for accessibility (README?)
 
-[[ ! -v BASH_LIB ]] && BASH_LIB="$(dirname ${0})/.."
+[[ ! -v BASH_LIB ]] && BASH_LIB="$(dirname "${0}")/.."
 
-LOREM="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor"
+script_name="$(basename $0)"
 
+help_text="
+${FMT_BOLD}${FG_CYAN}${script_name}: interactive script to demonstrate formatting.sh${FMT_CLR}
+
+${FMT_H1}REQUIRED ARGUMENTS${FMT_CLR}
+    
+    - N/A -
+
+${FMT_H1}REQUIRED ARGUMENTS${FMT_CLR}
+
+    ${FMT_ARG}FUNC${FMT_CLR}    name of demo_* function to run, then exit
+"
+
+# dummy text for use in demos
+LOREM="lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor"
+LOREM_A="incididunt ut labore et dolore magna aliqua"
+LOREM_B="ut enim ad minim veniam, quis nostrud"
+
+# standard linux logging levels
 linux_log_levels="""${FMT_BOLD}Level	Name       Description${FMT_CLR}
 0	    EMERG	   System is unusable.
 1	    ALERT	   Immediate action is required.
@@ -20,7 +38,9 @@ linux_log_levels="""${FMT_BOLD}Level	Name       Description${FMT_CLR}
 6	    INFO	   General information about system events.
 7	    DEBUG	   Detailed information for debugging purposes."""
 
-#
+# HELPER FUNCTIONS
+# ============================================================================================
+
 function sep() {
     # repeated block to separate code previews & output
     echo
@@ -37,9 +57,9 @@ function hint() {
 }
 
 function run_demo() {
+    # run a single demo, outside of loop_demos
+    # run demos in sub-shell to preserve clean cache etc
     (
-        # # # re-enable cache before demo
-        # MSG_EN_CACHE=$TRUE
         source "${BASH_LIB}/lib/utils.sh"
         "$1"
     )
@@ -55,14 +75,13 @@ function loop_demos() {
     function _print_table() {
         echo "Please select a demo to run:"
         echo
-        # always rebuild as fn_list will be updated on each loop
+        # always rebuild as fn_list_fmt will be updated on each loop
         local i j
         fn_table=""
-        for i in "${!fn_list[@]}"; do
+        for i in "${!fn_list_fmt[@]}"; do
             # start from 1, not 0
             j=$((i + 1))
-            # TODO filter out ^_* functions?
-            fn_table+=$'\n'"$j) ${fn_list[$i]}"
+            fn_table+=$'\n'"$j) ${fn_list_fmt[$i]}"
         done
         # output
         echo -e "$fn_table" | column -c "$(tput cols)"
@@ -92,8 +111,7 @@ function loop_demos() {
     }
 
     function _run_demo() {
-        # BUG calling demo second time breaks as ANSI codes are embedded in fn name
-        local fn="$(echo "${fn_list[$fn_num]}" | strip_ansi)"
+        local fn="$(echo "${fn_list[$fn_num]}")"
         echo
         echo "Now running: $response - ${fn}()"
         echo "=================================================="
@@ -110,19 +128,22 @@ function loop_demos() {
         echo "End of: ${fn}"
         echo
         # apply dim & strikethrough to completed demos
-        fn_list[$fn_num]="${FMT_DIM}${FMT_STRIKE}${fn_list[$fn_num]}${FMT_CLR}"
+        fn_list_fmt[$fn_num]="${FMT_DIM}${FMT_STRIKE}${fn_list[$fn_num]}${FMT_CLR}"
     }
 
     # gather a list of all available functions,
     # ignoring ^_* and demo_basics_all which always runs first
     fn_str="$(
-        grep "^function.*demo" "$0" |
+        grep -E "^function +demo" "$0" |
             sed 's/function //;s/(.*//;/^$/d;s/demo_//' |
             sort -h |
             grep -v "^_" |
             grep -v "demo_basics_all"
     )"
+    # raw function names
     readarray -t fn_list <<<"$fn_str"
+    # formatted to present to users - indicating already complete demos
+    readarray -t fn_list_fmt <<<"$fn_str"
     fn_max=${#fn_list[@]}
 
     # don't pollute the cache before running a demo
@@ -140,9 +161,8 @@ function loop_demos() {
     done
 }
 
-# ==============================================
 # DEMO FUNCTIONS
-# ==============================================
+# ============================================================================================
 
 # TODO expand/improve
 function demo_basics_all() {
@@ -440,8 +460,8 @@ function demo_multiple_strings() {
 
     msg_info "multiple strings can be passed to msg_* functions, each is printed on a newline"
     echo
-    hint '$ msg_info "guy was here" "lucie too"'
-    msg_info "guy was here" "lucie too"
+    hint '$ msg_info "${LOREM_A}" "${LOREM_B}"'
+    msg_info "${LOREM_A}" "${LOREM_B}"
     sep
 
     msg_info "newlines within the inputs are respected"
@@ -601,23 +621,16 @@ function _demo_logging() {
     cat $LOGFILE
 }
 
-# TODO remove if finished with
-function _demo_test() {
-    # test if the shell is clean or not
-    msg_info "msg_cache_dump"
-    echo
-    msg_cache_dump
-}
-
 # MAIN
 # ==============================================
-# call functions in sub-shells - ensures a clean environment by sourcing formatting.sh
-# within each function
 
+[[ $* =~ --help ]] && echo -e "$help_text" && exit 0
+
+# run interactively
 if [[ $# -eq 0 ]]; then
     # always provide general intro
-    # while true loop prompting for user-selcted demo
     run_demo "demo_basics_all"
+    # a `while true` loop executing user-selceted demos
     loop_demos
     exit 0
 else
